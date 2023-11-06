@@ -1,0 +1,7 @@
+template de hpp
+
+
+variavel global de profile_resource_folder
+
+
+

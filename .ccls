@@ -1,0 +1,9 @@
+{
+  "project": {
+    "includePath": [
+      "./include/"
+    ]
+    // Outras configurações do projeto
+  }
+}
+

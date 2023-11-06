@@ -1,0 +1,13 @@
+
+
+# Custom Ignored Folders
+/build/
+/dist/
+/.ccls-cache/
+/.project
+/.cproject
+/.vscode/
+/.old/
+/.vs/
+
+

@@ -1,0 +1,93 @@
+#!/bin/bash
+
+declare CPP_VERSION="${CPP_VERSION:-"c++20"}"
+declare CPP_FILE_FILTER="${CPP_FILE_FILTER:-"*.c++"}"
+declare CPP_SOURCE_FOLDER="${CPP_SOURCE_FOLDER:-"source"}"
+declare CPP_INCLUDE_FOLDER="${CPP_INCLUDE_FOLDER:-"include"}"
+declare CPP_TESTS_FOLDER="${CPP_TESTS_FOLDER:-"tests"}"
+declare CPP_BUILD_FOLDER="${CPP_BUILD_FOLDER:-"build"}"
+declare CPP_DIST_FOLDER="${CPP_DIST_FOLDER:-"dist"}"
+declare CPP_MAIN_FILE_REGEXP="${CPP_MAIN_FILE_REGEXP:-"\\bint\\s+main\\s*\\("}"
+
+
+function build_cpp_file
+{
+	local -A files
+	files["cpp"]="${1#./}"
+	files["obj"]="${CPP_BUILD_FOLDER}/${files["cpp"]%.*}.o"
+	files["dep"]="${files["obj"]}.d"
+
+	if [[ ! -f "${files["obj"]}" || "${files["cpp"]}" -nt "${files["obj"]}" ]];
+	then
+		echo "build: ${files["cpp"]}"
+		mkdir -p "$( dirname "${files["obj"]}" )"
+		g++ -m64 -c -Werror -MMD -MP -std="${CPP_VERSION}"	\
+			-I"${CPP_INCLUDE_FOLDER}"	\
+			-MF "${files["dep"]}"		\
+			-o "${files["obj"]}"		\
+			"${files["cpp"]}"
+	fi
+}
+
+function remove_orphaned_object
+{
+	local cpp_path
+	cpp_path="$( echo "${1%.o}" | cut -d'/' -f3- ).${CPP_FILE_FILTER##*.}"
+	if [[ ! -f "${cpp_path}" ]];
+	then
+		rm -rf "$1" "$1.d"
+		echo "Removido: $1"
+	fi
+}
+
+function build_project
+{
+	local -A files
+	local -a link_list
+
+	mkdir -p "${CPP_BUILD_FOLDER}" "${CPP_DIST_FOLDER}"
+	
+	while read -r cpp_file
+	do
+		build_cpp_file "${cpp_file}"
+	done <<< "$( find . -name "${CPP_FILE_FILTER}" )"
+
+	while read -r main_file
+	do
+		link_list=()
+		files["main"]="${main_file#./}"
+		files["bin"]="${CPP_DIST_FOLDER}/$( basename "${files["main"]%.*}" )"
+
+		while read -r cpp_file
+		do
+			files["cpp"]="${cpp_file#./}"
+			files["obj"]="${CPP_BUILD_FOLDER}/${files["cpp"]%.*}.o"
+
+			grep -qE "${CPP_MAIN_FILE_REGEXP}" "${files["cpp"]}" && continue
+			[[ "${files["main"]}" == "${CPP_SOURCE_FOLDER}"* ]] && \
+				[[ "${files["cpp"]}" == "${CPP_TESTS_FOLDER}"* ]] && continue
+			[[ "${files["cpp"]}" == "${CPP_TESTS_FOLDER}"* ]] && \
+				[[ "${files["cpp"]}" != "${files["main"]%/*}"* ]] && continue
+
+			link_list+=( "${files["obj"]}" )
+		done <<< "$( find . -name "${CPP_FILE_FILTER}" -type f )"
+		
+		echo "________________________________________________________________________________"
+		echo "${files["bin"]} from ${files["main"]}"
+		for obj_file in "${link_list[@]}";
+		do
+			echo -e "\t${obj_file}"
+		done
+
+		g++ -m64 -o "${files["bin"]}" "${CPP_BUILD_FOLDER}/${files["main"]%.*}.o" "${link_list[@]}" || exit 1
+
+	done <<< "$( find . -name "${CPP_FILE_FILTER}" -type f -exec grep -lE "${CPP_MAIN_FILE_REGEXP}" {} \; )"
+		
+	while read -r files["obj"];
+	do
+		remove_orphaned_object "${files["obj"]}"
+	done <<< "$( find . -name "*.o" )"
+}
+
+
+build_project
